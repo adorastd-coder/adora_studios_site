@@ -27,7 +27,7 @@
   const grid = document.getElementById('blogGrid');
   const status = document.getElementById('blogStatus');
   const postView = document.getElementById('postView');
-  const config = window.ADORA_BLOG_CONFIG || {};
+  const config = window.VRIXO_BLOG_CONFIG || {};
 
   function escapeHTML(value){
     return String(value || '').replace(/[&<>"']/g,function(char){
@@ -70,7 +70,7 @@
   }
 
   function formatDate(value){
-    if(!value)return 'Adora notes';
+    if(!value)return 'Vrixo notes';
     const date = new Date(value);
     if(Number.isNaN(date.getTime()))return value;
     return date.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
@@ -132,7 +132,7 @@
     const slug = decodeURIComponent(match[1]);
     const post = state.posts.find(function(item){return item.slug === slug;});
     if(!post)return;
-    document.title = `${post.title} | Adora Studio`;
+    document.title = `${post.title} | Vrixo Studio`;
     const metaDescription = document.querySelector('meta[name="description"]');
     if(metaDescription && post.excerpt){
       metaDescription.setAttribute('content',post.excerpt);
@@ -152,7 +152,7 @@
       const posts = await fetchPostsFromGitHub();
       renderList(posts,'');
     }catch(error){
-      renderList(fallbackPosts,'Featured insights from Adora Studio.',false);
+      renderList(fallbackPosts,'Featured insights from Vrixo Studio.',false);
     }
     renderPostFromHash();
   }
