@@ -1179,29 +1179,30 @@ ownerChatForm.addEventListener('submit',async function(event){
 });
 
 /* --- VRIXO AI assistant --- */
-/*
-Cloudflare Worker setup:
-1. Create a Cloudflare Worker.
-2. Copy the provided groq-worker.js code into the Worker.
-3. Set the GROQ_API_KEY environment variable in Cloudflare.
-4. Deploy the Worker and copy its URL.
-5. Replace YOUR_CLOUDFLARE_WORKER_URL below with that deployed Worker URL.
-*/
-const GROQ_WORKER_URL = 'YOUR_CLOUDFLARE_WORKER_URL';
-const aiChatButton = document.getElementById('aiChatButton');
-const aiChatPanel = document.getElementById('aiChatPanel');
-const aiChatClose = document.getElementById('aiChatClose');
-const aiChatForm = document.getElementById('aiChatForm');
-const aiChatInput = document.getElementById('aiChatInput');
+const GROQ_WORKER_URL = 'https://adora-groq-worker.adorastd.workers.dev'; // ← your real worker URL
+const MAX_QUESTIONS = 5;
+const storageKey = 'vrixo_ai_q_count';
+
+const aiChatButton   = document.getElementById('aiChatButton');
+const aiChatPanel    = document.getElementById('aiChatPanel');
+const aiChatClose    = document.getElementById('aiChatClose');
+const aiChatForm     = document.getElementById('aiChatForm');
+const aiChatInput    = document.getElementById('aiChatInput');
 const aiChatMessages = document.getElementById('aiChatMessages');
-const aiChatStatus = document.getElementById('aiChatStatus');
-const aiChatSend = document.getElementById('aiChatSend');
+const aiChatStatus   = document.getElementById('aiChatStatus');
+const aiChatSend     = document.getElementById('aiChatSend');
+
+function getCount(){ return parseInt(sessionStorage.getItem(storageKey)) || 0; }
+function addCount(){ const c = getCount()+1; sessionStorage.setItem(storageKey,c); return c; }
 
 function openAIChat(){
   aiChatPanel.classList.add('is-open');
   aiChatPanel.setAttribute('aria-hidden','false');
   aiChatButton.setAttribute('aria-expanded','true');
-  setTimeout(function(){aiChatInput.focus();},80);
+  const atLimit = getCount() >= MAX_QUESTIONS;
+  aiChatInput.disabled = atLimit;
+  aiChatSend.disabled  = atLimit;
+  setTimeout(()=>{ if(!atLimit) aiChatInput.focus(); }, 80);
 }
 function closeAIChat(){
   aiChatPanel.classList.remove('is-open');
@@ -1209,74 +1210,82 @@ function closeAIChat(){
   aiChatButton.setAttribute('aria-expanded','false');
   aiChatButton.focus();
 }
-function addAIMessage(text,type){
-  const message = document.createElement('div');
-  message.className = 'ai-message ' + type;
-  message.textContent = text;
-  aiChatMessages.appendChild(message);
+function addAIMessage(text, type){
+  const msg = document.createElement('div');
+  msg.className = 'ai-message ' + type;
+  msg.textContent = text;
+  aiChatMessages.appendChild(msg);
   aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
-  return message;
+  return msg;
 }
 function addTypingIndicator(){
-  const typing = document.createElement('div');
-  typing.className = 'ai-message bot typing';
-  typing.setAttribute('aria-label','VRIXO AI is typing');
-  typing.innerHTML = '<span></span><span></span><span></span>';
-  aiChatMessages.appendChild(typing);
+  const t = document.createElement('div');
+  t.className = 'ai-message bot typing';
+  t.setAttribute('aria-label','VRIXO AI is typing');
+  t.innerHTML = '<span></span><span></span><span></span>';
+  aiChatMessages.appendChild(t);
   aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
-  return typing;
+  return t;
 }
-aiChatButton.addEventListener('click',openAIChat);
-aiChatClose.addEventListener('click',closeAIChat);
-aiChatPanel.addEventListener('keydown',function(event){
-  trapFocus(event,aiChatPanel);
+
+aiChatButton.addEventListener('click', openAIChat);
+aiChatClose.addEventListener('click', closeAIChat);
+aiChatPanel.addEventListener('keydown', function(event){
+  trapFocus(event, aiChatPanel);
   if(event.key === 'Escape') closeAIChat();
 });
-aiChatForm.addEventListener('submit',async function(event){
+
+aiChatForm.addEventListener('submit', async function(event){
   event.preventDefault();
   const question = aiChatInput.value.trim();
   if(!question) return;
-  addAIMessage(question,'user');
+
+  const currentCount = getCount();
+  if(currentCount >= MAX_QUESTIONS){
+    addAIMessage("You've used all 5 free questions. Book a free audit or message the owner to continue.", 'bot');
+    return;
+  }
+
+  addAIMessage(question, 'user');
   aiChatInput.value = '';
   aiChatStatus.textContent = '';
   aiChatStatus.className = 'ai-chat-status';
   aiChatSend.disabled = true;
   const typing = addTypingIndicator();
+
   try{
-    if(GROQ_WORKER_URL === 'YOUR_CLOUDFLARE_WORKER_URL'){
-      throw new Error('Worker URL has not been configured');
-    }
-    const response = await fetch(GROQ_WORKER_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:question})
+    const response = await fetch(GROQ_WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: question, questionCount: currentCount })
     });
     const data = await response.json();
-    if(!response.ok || data.error) throw new Error(data.error || 'AI request failed');
     typing.remove();
-    addAIMessage(data.reply || "I’m not sure – please contact the owner directly using the message bubble next to me.",'bot');
+    if(!response.ok || data.error) throw new Error(data.error || 'AI request failed');
+    addAIMessage(data.reply || "I'm not sure – please use the message bubble next to me.", 'bot');
+    const newCount = addCount();
+    if(newCount >= MAX_QUESTIONS){
+      aiChatInput.disabled = true;
+      aiChatSend.disabled  = true;
+      addAIMessage("You've reached the 5-question limit. Book a free audit or message the owner to continue.", 'bot');
+    }
   }catch(error){
     typing.remove();
     aiChatStatus.classList.add('is-error');
-    aiChatStatus.textContent = 'AI chat is unavailable. Please use the owner message bubble next to me.';
-    addAIMessage("I’m not sure – please contact the owner directly using the message bubble next to me.",'bot');
+    aiChatStatus.textContent = 'AI chat is unavailable. Please use the owner message bubble.';
+    addAIMessage("I'm not sure – please contact the owner directly using the message bubble next to me.", 'bot');
   }finally{
-    aiChatSend.disabled = false;
-    aiChatInput.focus();
+    if(getCount() < MAX_QUESTIONS){
+      aiChatSend.disabled = false;
+      aiChatInput.focus();
+    }
   }
 });
 
 function trackLead(){
-  /* Meta Pixel — fires Lead event */
-  if(typeof fbq !== 'undefined'){
-    fbq('track','Lead');
-  }
-  /* Google Ads — fires conversion event */
-  /* Replace AW-XXXXXXXXXX/XXXXX with your conversion label */
+  if(typeof fbq !== 'undefined'){ fbq('track','Lead'); }
   if(typeof gtag !== 'undefined'){
-    gtag('event','conversion',{
-      'send_to':'AW-XXXXXXXXXX/XXXXX'
-    });
+    gtag('event','conversion',{ 'send_to':'AW-XXXXXXXXXX/XXXXX' });
   }
 }
 </script>
